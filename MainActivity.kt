@@ -240,7 +240,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        settingsContainer.addView(dndButton)
+                settingsContainer.addView(dndButton)
+
+        // Кнопка: Разрешить работу в фоне (Игнорирование оптимизации батареи)
+        val backgroundButton = Button(this).apply {
+            text = "Разрешить работу в фоне"
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    try {
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        // Если прямое окно не поддерживается, открываем общий список оптимизации батареи
+                        val generalIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        startActivity(generalIntent)
+                    }
+                } else {
+                    Toast.makeText(this@MainActivity, "На вашей версии Android это не требуется", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        settingsContainer.addView(backgroundButton)
+
         // Нижняя панель навигации в настройках: две аккуратные кнопки рядом
         val settingsNavigationLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -275,7 +298,6 @@ class MainActivity : ComponentActivity() {
             RelativeLayout.LayoutParams.MATCH_PARENT
         )
         rootLayout.addView(settingsContainer, settingsParams)
-
 
         // ================= ЭКРАН 3: О ПРОГРАММЕ =================
         aboutContainer = LinearLayout(this).apply {
