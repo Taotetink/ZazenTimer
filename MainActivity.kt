@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     // Контейнеры экранов
     private lateinit var mainContainer: RelativeLayout
     private lateinit var settingsContainer: LinearLayout
+    private lateinit var aboutContainer: LinearLayout // Добавлен контейнер для "О программе"
 
     // Элементы главного экрана
     private lateinit var statusTextView: TextView
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         localSoundFile = File(cacheDir, "meditation_sound.mp3")
@@ -118,8 +120,8 @@ class MainActivity : ComponentActivity() {
         val openSettingsButton = Button(this).apply {
             text = "〇"
             textSize = 26f
-            setBackgroundColor(0x00000000) // полностью прозрачный фон
-            setTextColor(0xFF666666.toInt()) // мягкий темно-серый цвет
+            setBackgroundColor(0x00000000)
+            setTextColor(0xFF666666.toInt())
             setOnClickListener {
                 mainContainer.visibility = View.GONE
                 settingsContainer.visibility = View.VISIBLE
@@ -131,7 +133,7 @@ class MainActivity : ComponentActivity() {
         ).apply {
             addRule(RelativeLayout.ALIGN_PARENT_TOP)
             addRule(RelativeLayout.ALIGN_PARENT_RIGHT)
-            setMargins(0, 40, 40, 0) // отступы от верхнего и правого краев экрана
+            setMargins(0, 40, 40, 0)
         }
         mainContainer.addView(openSettingsButton, settingsBtnParams)
 
@@ -166,11 +168,10 @@ class MainActivity : ComponentActivity() {
         val startButton = Button(this).apply { text = "Старт"; setPadding(48, 24, 48, 24); setOnClickListener { startTimerService() } }
         val stopButton = Button(this).apply { text = "Стоп"; setPadding(48, 24, 48, 24); setOnClickListener { stopTimerService() } }
         actionButtonsLayout.addView(startButton)
-        actionButtonsLayout.addView(TextView(this).apply { width = 48 }) // отступ между кнопками Старт и Стоп
+        actionButtonsLayout.addView(TextView(this).apply { width = 48 })
         actionButtonsLayout.addView(stopButton)
         centerBlock.addView(actionButtonsLayout)
 
-        // Размещаем центральный блок строго по центру экрана
         val centerParams = RelativeLayout.LayoutParams(
             RelativeLayout.LayoutParams.WRAP_CONTENT,
             RelativeLayout.LayoutParams.WRAP_CONTENT
@@ -179,8 +180,6 @@ class MainActivity : ComponentActivity() {
         }
         mainContainer.addView(centerBlock, centerParams)
         rootLayout.addView(mainContainer, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT))
-
-
         // ================= ЭКРАН 2: НАСТРОЙКИ =================
         settingsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -242,23 +241,105 @@ class MainActivity : ComponentActivity() {
             }
         }
         settingsContainer.addView(dndButton)
+        // Нижняя панель навигации в настройках: две аккуратные кнопки рядом
+        val settingsNavigationLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 32, 0, 0)
+        }
 
         val closeSettingsButton = Button(this).apply {
-            text = "Сохранить и вернуться"
-            setPadding(0, 24, 0, 0)
+            text = "Назад"
             setOnClickListener {
                 savePreferences()
                 settingsContainer.visibility = View.GONE
                 mainContainer.visibility = View.VISIBLE
             }
         }
-        settingsContainer.addView(closeSettingsButton)
+        settingsNavigationLayout.addView(closeSettingsButton)
+        settingsNavigationLayout.addView(TextView(this).apply { width = 48 }) // Отступ
+
+        val aboutButton = Button(this).apply {
+            text = "О программе"
+            setOnClickListener {
+                savePreferences()
+                settingsContainer.visibility = View.GONE
+                aboutContainer.visibility = View.VISIBLE
+            }
+        }
+        settingsNavigationLayout.addView(aboutButton)
+        settingsContainer.addView(settingsNavigationLayout)
 
         val settingsParams = RelativeLayout.LayoutParams(
             RelativeLayout.LayoutParams.MATCH_PARENT,
             RelativeLayout.LayoutParams.MATCH_PARENT
         )
         rootLayout.addView(settingsContainer, settingsParams)
+
+
+        // ================= ЭКРАН 3: О ПРОГРАММЕ =================
+        aboutContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setPadding(64, 64, 64, 64)
+        }
+
+        aboutContainer.addView(TextView(this).apply {
+            text = "Zazen Timer v1.0"
+            textSize = 24f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 0, 0, 24)
+            gravity = Gravity.CENTER
+        })
+
+        aboutContainer.addView(TextView(this).apply {
+            text = "Минималистичный таймер для практики медитации."
+            textSize = 16f
+            setTextColor(0xFFBBBBBB.toInt())
+            setPadding(0, 0, 0, 16)
+            gravity = Gravity.CENTER
+        })
+
+        aboutContainer.addView(TextView(this).apply {
+            text = "Таймер делает только то, что должен: переводит телефон в режим «Не беспокоить», отсчитывает время и подает сигналы начала и окончания медитации."
+            textSize = 14f
+            setTextColor(0xFF888888.toInt())
+            setPadding(0, 0, 0, 48)
+            gravity = Gravity.CENTER
+        })
+
+        aboutContainer.addView(TextView(this).apply {
+            text = "Автор: Игорь Василевский"
+            textSize = 16f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 0, 0, 8)
+            gravity = Gravity.CENTER
+        })
+
+        val siteLinkTextView = TextView(this).apply {
+            text = "igorvasilevsky.com"
+            textSize = 16f
+            setTextColor(0xFF4287F5.toInt())
+            setPadding(16, 16, 16, 48)
+            gravity = Gravity.CENTER
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://igorvasilevsky.com"))
+                startActivity(intent)
+            }
+        }
+        aboutContainer.addView(siteLinkTextView)
+
+        val backToSettingsButton = Button(this).apply {
+            text = "Назад"
+            setOnClickListener {
+                aboutContainer.visibility = View.GONE
+                settingsContainer.visibility = View.VISIBLE
+            }
+        }
+        aboutContainer.addView(backToSettingsButton)
+
+        rootLayout.addView(aboutContainer, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT))
 
         setContentView(rootLayout)
         loadPreferences()
@@ -272,97 +353,9 @@ class MainActivity : ComponentActivity() {
         width = 150
     }
 
-    private fun playSound() {
-        try {
-            acquireWakeLock()
-            mediaPlayer?.release()
-
-            val volumeLevel = savedVolumeProgress / 100f
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build()
-                )
-
-                if (localSoundFile != null && localSoundFile!!.exists() && localSoundFile!!.length() > 0) {
-                    setDataSource(localSoundFile!!.absolutePath)
-                } else {
-                    val defaultUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                        ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                    setDataSource(this@MainActivity, defaultUri)
-                }
-
-                setVolume(volumeLevel, volumeLevel)
-                prepare()
-                start()
-                setOnCompletionListener { releaseWakeLock() }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            releaseWakeLock()
-        }
-    }
-
-    private fun acquireWakeLock() {
-        try {
-            if (wakeLock == null) {
-                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZazenTimer:WakeLock")
-            }
-            if (wakeLock?.isHeld == false) {
-                wakeLock?.acquire(10 * 1000L)
-            }
-        } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun releaseWakeLock() {
-        try {
-            if (wakeLock?.isHeld == true) { wakeLock?.release() }
-        } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun startTimerService() {
-        savePreferences()
-        val prepMin = prepMinEditText.text.toString().toLongOrNull() ?: 0L
-        val prepSec = prepSecEditText.text.toString().toLongOrNull() ?: 0L
-        val mainMin = mainMinEditText.text.toString().toLongOrNull() ?: 0L
-        val mainSec = mainSecEditText.text.toString().toLongOrNull() ?: 0L
-
-        val prepTimeMs = (prepMin * 60 + prepSec) * 1000
-        val mainTimeMs = (mainMin * 60 + mainSec) * 1000
-
-        if (mainTimeMs == 0L) {
-            Toast.makeText(this, "Задайте время медитации", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val intent = Intent(this, TimerService::class.java).apply {
-            action = "START_TIMER"
-            putExtra("PREP_TIME_MS", prepTimeMs)
-            putExtra("MAIN_TIME_MS", mainTimeMs)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
-    private fun stopTimerService() {
-        startService(Intent(this, TimerService::class.java).apply { action = "STOP_TIMER" })
-    }
-
-    private fun formatTime(seconds: Long): String {
-        val m = seconds / 60
-        val s = seconds % 60
-        return String.format("%02d:%02d", m, s)
-    }
-
     private fun savePreferences() {
-        getSharedPreferences("timer_prefs", Context.MODE_PRIVATE).edit().apply {
+        val prefs = getSharedPreferences("timer_prefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
             putString("prep_min", prepMinEditText.text.toString())
             putString("prep_sec", prepSecEditText.text.toString())
             putString("main_min", mainMinEditText.text.toString())
@@ -374,27 +367,89 @@ class MainActivity : ComponentActivity() {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences("timer_prefs", Context.MODE_PRIVATE)
-        prepMinEditText.setText(prefs.getString("prep_min", ""))
-        prepSecEditText.setText(prefs.getString("prep_sec", ""))
-        mainMinEditText.setText(prefs.getString("main_min", ""))
-        mainSecEditText.setText(prefs.getString("main_sec", ""))
+        prepMinEditText.setText(prefs.getString("prep_min", "0"))
+        prepSecEditText.setText(prefs.getString("prep_sec", "10"))
+        mainMinEditText.setText(prefs.getString("main_min", "15"))
+        mainSecEditText.setText(prefs.getString("main_sec", "0"))
         savedVolumeProgress = prefs.getInt("volume", 70)
         volumeSeekBar.progress = savedVolumeProgress
         volumeValueTextView.text = "$savedVolumeProgress%"
-        soundNameTextView.text = prefs.getString("sound_display_name", "Звук по умолчанию")
+        val displayName = prefs.getString("sound_display_name", "Звук по умолчанию")
+        soundNameTextView.text = displayName
     }
 
-    override fun onBackPressed() {
-        if (settingsContainer.visibility == View.VISIBLE) {
-            settingsContainer.visibility = View.GONE
-            mainContainer.visibility = View.VISIBLE
+    private fun startTimerService() {
+        val prepMin = prepMinEditText.text.toString().toLongOrNull() ?: 0L
+        val prepSec = prepSecEditText.text.toString().toLongOrNull() ?: 0L
+        val mainMin = mainMinEditText.text.toString().toLongOrNull() ?: 0L
+        val mainSec = mainSecEditText.text.toString().toLongOrNull() ?: 0L
+
+        val prepTimeMs = (prepMin * 60 + prepSec) * 1000
+        val mainTimeMs = (mainMin * 60 + mainSec) * 1000
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZazenTimer:WakeLock").apply {
+            acquire(prepTimeMs + mainTimeMs + 5000)
+        }
+
+        val intent = Intent(this, TimerService::class.java).apply {
+            action = "START_TIMER"
+            putExtra("PREP_TIME_MS", prepTimeMs)
+            putExtra("MAIN_TIME_MS", mainTimeMs)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
         } else {
-            super.onBackPressed()
+            startService(intent)
         }
     }
 
-    override fun onResume() {
-        super.onResume()
+    private fun stopTimerService() {
+        val intent = Intent(this, TimerService::class.java).apply { action = "STOP_TIMER" }
+        startService(intent)
+        releaseWakeLock()
+    }
+
+    private fun playSound() {
+        try {
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer().apply {
+                if (localSoundFile != null && localSoundFile!!.exists()) {
+                    setDataSource(localSoundFile!!.absolutePath)
+                } else {
+                    val defaultSoundUri = Settings.System.DEFAULT_NOTIFICATION_URI
+                    setDataSource(this@MainActivity, defaultSoundUri)
+                }
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                val volume = savedVolumeProgress / 100f
+                setVolume(volume, volume)
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Ошибка воспроизведения звука", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) { wakeLock?.release() }
+        wakeLock = null
+    }
+
+    private fun formatTime(seconds: Long): String {
+        val mins = seconds / 60
+        val secs = seconds % 60
+        return String.format("%02d:%02d", mins, secs)
+    }
+
+    override fun onStart() {
+        super.onStart()
         val filter = IntentFilter().apply {
             addAction("com.example.minimalmeditationtimer.TICK_PREP")
             addAction("com.example.minimalmeditationtimer.TICK_MAIN")
@@ -409,13 +464,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
+    override fun onStop() {
+        try { unregisterReceiver(timerReceiver) } catch (e: Exception) { e.printStackTrace() }
+        super.onStop()
     }
 
     override fun onDestroy() {
-        unregisterReceiver(timerReceiver)
         mediaPlayer?.release()
+        mediaPlayer = null
         releaseWakeLock()
         super.onDestroy()
     }
