@@ -1,10 +1,13 @@
 package com.example.minimalmeditationtimer
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
@@ -12,8 +15,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -35,6 +41,7 @@ class MainActivity : ComponentActivity() {
     // Контейнеры экранов
     private lateinit var mainContainer: RelativeLayout
     private lateinit var settingsContainer: LinearLayout
+    private lateinit var aboutContainer: LinearLayout
 
     // Элементы главного экрана
     private lateinit var statusTextView: TextView
@@ -100,6 +107,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         localSoundFile = File(cacheDir, "meditation_sound.mp3")
@@ -108,6 +116,9 @@ class MainActivity : ComponentActivity() {
         val rootLayout = RelativeLayout(this).apply {
             setBackgroundColor(0xFF1E1E1E.toInt())
         }
+
+        // Конвертер DP в PX для красивых отступов и размеров на любых экранах
+        val dp = { value: Int -> (value * resources.displayMetrics.density).toInt() }
 
         // ================= ЭКРАН 1: ГЛАВНЫЙ ТАЙМЕР =================
         mainContainer = RelativeLayout(this).apply {
@@ -121,8 +132,7 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(0x00000000) // полностью прозрачный фон
             setTextColor(0xFF666666.toInt()) // мягкий темно-серый цвет
             setOnClickListener {
-                mainContainer.visibility = View.GONE
-                settingsContainer.visibility = View.VISIBLE
+                crossfade(mainContainer, settingsContainer)
             }
         }
         val settingsBtnParams = RelativeLayout.LayoutParams(
@@ -131,7 +141,7 @@ class MainActivity : ComponentActivity() {
         ).apply {
             addRule(RelativeLayout.ALIGN_PARENT_TOP)
             addRule(RelativeLayout.ALIGN_PARENT_RIGHT)
-            setMargins(0, 40, 40, 0) // отступы от верхнего и правого краев экрана
+            setMargins(0, dp(20), dp(20), 0)
         }
         mainContainer.addView(openSettingsButton, settingsBtnParams)
 
@@ -145,7 +155,7 @@ class MainActivity : ComponentActivity() {
             text = "Готово к запуску"
             textSize = 22f
             setTextColor(0xFF888888.toInt())
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, dp(8))
             gravity = Gravity.CENTER
         }
         centerBlock.addView(statusTextView)
@@ -154,7 +164,7 @@ class MainActivity : ComponentActivity() {
             text = "00:00"
             textSize = 80f
             setTextColor(0xFFFFFFFF.toInt())
-            setPadding(0, 0, 0, 48)
+            setPadding(0, 0, 0, dp(24))
             gravity = Gravity.CENTER
         }
         centerBlock.addView(timeTextView)
@@ -163,10 +173,29 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        val startButton = Button(this).apply { text = "Старт"; setPadding(48, 24, 48, 24); setOnClickListener { startTimerService() } }
-        val stopButton = Button(this).apply { text = "Стоп"; setPadding(48, 24, 48, 24); setOnClickListener { stopTimerService() } }
+        
+        // Красивый стиль для кнопок Старт/Стоп
+        val buttonBackground = GradientDrawable().apply {
+            setColor(0xFF2A2A2A.toInt())
+            cornerRadius = dp(8).toFloat()
+        }
+        
+        val startButton = Button(this).apply { 
+            text = "Старт"
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground.constantState?.newDrawable()
+            setPadding(dp(24), dp(12), dp(24), dp(12)) 
+            setOnClickListener { startTimerService() } 
+        }
+        val stopButton = Button(this).apply { 
+            text = "Стоп"
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground.constantState?.newDrawable()
+            setPadding(dp(24), dp(12), dp(24), dp(12)) 
+            setOnClickListener { stopTimerService() } 
+        }
         actionButtonsLayout.addView(startButton)
-        actionButtonsLayout.addView(TextView(this).apply { width = 48 }) // отступ между кнопками Старт и Стоп
+        actionButtonsLayout.addView(TextView(this).apply { width = dp(24) }) // отступ между кнопками
         actionButtonsLayout.addView(stopButton)
         centerBlock.addView(actionButtonsLayout)
 
@@ -186,31 +215,42 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(48, 48, 48, 48)
+            setPadding(dp(24), dp(24), dp(24), dp(24))
         }
 
-        settingsContainer.addView(TextView(this).apply { text = "Время подготовки:"; setTextColor(0xFF888888.toInt()); setPadding(0, 16, 0, 8) })
+        settingsContainer.addView(TextView(this).apply { text = "Время подготовки:"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(8), 0, dp(4)) })
         val prepLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        prepMinEditText = createTimeEditText("Мин")
-        prepSecEditText = createTimeEditText("Сек")
+        prepMinEditText = createTimeEditText("Мин", dp)
+        prepSecEditText = createTimeEditText("Сек", dp)
         prepLayout.addView(prepMinEditText)
         prepLayout.addView(TextView(this).apply { text = " : "; setTextColor(0xFFFFFFFF.toInt()); textSize = 18f })
         prepLayout.addView(prepSecEditText)
         settingsContainer.addView(prepLayout)
 
-        settingsContainer.addView(TextView(this).apply { text = "Время медитации:"; setTextColor(0xFF888888.toInt()); setPadding(0, 16, 0, 8) })
+        settingsContainer.addView(TextView(this).apply { text = "Время медитации:"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(8), 0, dp(4)) })
         val mainLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        mainMinEditText = createTimeEditText("Мин")
-        mainSecEditText = createTimeEditText("Сек")
+        mainMinEditText = createTimeEditText("Мин", dp)
+        mainSecEditText = createTimeEditText("Сек", dp)
         mainLayout.addView(mainMinEditText)
         mainLayout.addView(TextView(this).apply { text = " : "; setTextColor(0xFFFFFFFF.toInt()); textSize = 18f })
         mainLayout.addView(mainSecEditText)
         settingsContainer.addView(mainLayout)
 
-        settingsContainer.addView(TextView(this).apply { text = "Громкость гонга:"; setTextColor(0xFF888888.toInt()); setPadding(0, 16, 0, 8) })
+        // Настройка автоперехода фокуса между полями ввода
+        setupAutoAdvance(prepMinEditText, prepSecEditText)
+        setupAutoAdvance(prepSecEditText, mainMinEditText)
+        setupAutoAdvance(mainMinEditText, mainSecEditText)
+
+        settingsContainer.addView(TextView(this).apply { text = "Громкость гонга:"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(8), 0, dp(4)) })
         val volumeLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        volumeSeekBar = SeekBar(this).apply { max = 100 }
-        volumeValueTextView = TextView(this).apply { text = "70%"; setTextColor(0xFFFFFFFF.toInt()); setPadding(16, 0, 0, 0) }
+        
+        // Кастомизация SeekBar под общий дзен-стиль
+        volumeSeekBar = SeekBar(this).apply { 
+            max = 100
+            progressDrawable?.setColorFilter(0xFF666666.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+            thumb?.setColorFilter(0xFFFFFFFF.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+        volumeValueTextView = TextView(this).apply { text = "70%"; setTextColor(0xFFFFFFFF.toInt()); setPadding(dp(8), 0, 0, 0) }
         volumeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 savedVolumeProgress = progress
@@ -219,20 +259,75 @@ class MainActivity : ComponentActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-        volumeLayout.addView(volumeSeekBar, LinearLayout.LayoutParams(350, LinearLayout.LayoutParams.WRAP_CONTENT))
+        volumeLayout.addView(volumeSeekBar, LinearLayout.LayoutParams(dp(180), LinearLayout.LayoutParams.WRAP_CONTENT))
         volumeLayout.addView(volumeValueTextView)
         settingsContainer.addView(volumeLayout)
 
-        soundNameTextView = TextView(this).apply { text = "Звук по умолчанию"; setTextColor(0xFF888888.toInt()); setPadding(0, 4, 0, 12); gravity = Gravity.CENTER }
-        val pickSoundButton = Button(this).apply { text = "Выбрать аудиофайл"; setOnClickListener { audioPickerLauncher.launch("audio/*") } }
+        soundNameTextView = TextView(this).apply { text = "Звук по умолчанию"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(4), 0, dp(8)); gravity = Gravity.CENTER }
+        
+        val pickSoundButton = Button(this).apply { 
+            text = "Выбрать аудиофайл"
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground.constantState?.newDrawable()
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { audioPickerLauncher.launch("audio/*") } 
+        }
         settingsContainer.addView(pickSoundButton)
         settingsContainer.addView(soundNameTextView)
 
+        // Горизонтальный ряд для кнопок «О программе» и «Сохранить» (НАД разрешениями)
+        val buttonsRowLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(8))
+        }
+
+        // Кнопка «О программе» (Прозрачная с тонкой рамкой в стиле Outlined Button)
+        val outlinedBackground = GradientDrawable().apply {
+            setColor(0x00000000)
+            setStroke(dp(1), 0xFF555555.toInt())
+            cornerRadius = dp(6).toFloat()
+        }
+
+        val aboutButton = Button(this).apply {
+            text = "О программе"
+            setTextColor(0xFFCCCCCC.toInt())
+            background = outlinedBackground.constantState?.newDrawable()
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener {
+                hideKeyboard()
+                crossfade(settingsContainer, aboutContainer)
+            }
+        }
+
+        // Кнопка «Сохранить»
+        val closeSettingsButton = Button(this).apply {
+            text = "Сохранить"
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground.constantState?.newDrawable()
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            setOnClickListener {
+                savePreferences()
+                hideKeyboard()
+                crossfade(settingsContainer, mainContainer)
+            }
+        }
+
+        buttonsRowLayout.addView(aboutButton)
+        buttonsRowLayout.addView(TextView(this).apply { width = dp(16) }) // Отступ между кнопками
+        buttonsRowLayout.addView(closeSettingsButton)
+        settingsContainer.addView(buttonsRowLayout)
+
+        // Кнопка режима «Не беспокоить» (Текстовая ссылка)
         val dndButton = Button(this).apply {
             text = "Разрешить режим «Не беспокоить»"
+            setTextColor(0xFF888888.toInt())
+            setBackgroundColor(0x00000000)
+            textSize = 13f
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    // ИСПРАВЛЕНО: Теперь используется корректный метод Android API
                     if (!nm.isNotificationPolicyAccessGranted) {
                         startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
                     } else {
@@ -243,16 +338,34 @@ class MainActivity : ComponentActivity() {
         }
         settingsContainer.addView(dndButton)
 
-        val closeSettingsButton = Button(this).apply {
-            text = "Сохранить и вернуться"
-            setPadding(0, 24, 0, 0)
+        // Кнопка «Разрешить работу в фоне» (Текстовая ссылка под DND)
+        val backgroundButton = Button(this).apply {
+            text = "Разрешить работу в фоне"
+            setTextColor(0xFF888888.toInt())
+            setBackgroundColor(0x00000000)
+            textSize = 13f
             setOnClickListener {
-                savePreferences()
-                settingsContainer.visibility = View.GONE
-                mainContainer.visibility = View.VISIBLE
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (pm.isIgnoringBatteryOptimizations(packageName)) {
+                        Toast.makeText(this@MainActivity, "Разрешение уже предоставлено!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            startActivity(intent)
+                        }
+                    }
+                } else {
+                    Toast.makeText(this@MainActivity, "Разрешение уже предоставлено!", Toast.LENGTH_SHORT).show()
+                }
             }
         }
-        settingsContainer.addView(closeSettingsButton)
+        settingsContainer.addView(backgroundButton)
 
         val settingsParams = RelativeLayout.LayoutParams(
             RelativeLayout.LayoutParams.MATCH_PARENT,
@@ -260,16 +373,130 @@ class MainActivity : ComponentActivity() {
         )
         rootLayout.addView(settingsContainer, settingsParams)
 
+
+        // ================= ЭКРАН 3: О ПРОГРАММЕ (ПОЛНОЕ ПЕРЕКРЫТИЕ) =================
+        aboutContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setBackgroundColor(0xFF1E1E1E.toInt()) // Полное аскетичное перекрытие настроек
+            setPadding(dp(32), dp(32), dp(32), dp(32))
+        }
+
+        // Заголовок программы
+        val aboutTitle = TextView(this).apply {
+            text = "Zazen Timer v1.0"
+            textSize = 26f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 0, 0, dp(20))
+            gravity = Gravity.CENTER
+        }
+        aboutContainer.addView(aboutTitle)
+
+        // Описание программы
+        val aboutText = TextView(this).apply {
+            text = "Минималистичный таймер для практики медитации.\n\nТаймер делает только то, что должен: переводит телефон в режим «Не беспокоить», отсчитывает время и подает сигналы начала и окончания медитации."
+            textSize = 15f
+            setTextColor(0xFFCCCCCC.toInt())
+            setPadding(0, 0, 0, dp(20))
+            gravity = Gravity.CENTER
+        }
+        aboutContainer.addView(aboutText)
+
+        // Автор и кликабельный сайт
+        val aboutAuthor = TextView(this).apply {
+            text = "Автор: Игорь Василевский\nigorvasilevsky.com"
+            textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(24))
+        }
+        android.text.util.Linkify.addLinks(aboutAuthor, android.text.util.Linkify.WEB_URLS)
+        aboutAuthor.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        aboutContainer.addView(aboutAuthor)
+
+        // Кнопка возврата назад в настройки
+        val aboutBackButton = Button(this).apply {
+            text = "Назад"
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buttonBackground.constantState?.newDrawable()
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+            setOnClickListener {
+                crossfade(aboutContainer, settingsContainer)
+            }
+        }
+        aboutContainer.addView(aboutBackButton)
+
+        val aboutParams = RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.MATCH_PARENT,
+            RelativeLayout.LayoutParams.MATCH_PARENT
+        )
+        rootLayout.addView(aboutContainer, aboutParams)
+
         setContentView(rootLayout)
         loadPreferences()
     }
-    private fun createTimeEditText(hintText: String) = EditText(this).apply {
+
+    // Создание красивых полей ввода со скругленными углами
+    private fun createTimeEditText(hintText: String, dp: (Int) -> Int) = EditText(this).apply {
         hint = hintText
         setHintTextColor(0xFF555555.toInt())
         setTextColor(0xFFFFFFFF.toInt())
         inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        filters = arrayOf(android.text.InputFilter.LengthFilter(2))
         gravity = Gravity.CENTER
-        width = 150
+        width = dp(64)
+        setPadding(dp(8), dp(10), dp(8), dp(10))
+        
+        // Убираем старую линию снизу, делаем аккуратный темный блок
+        val editBg = GradientDrawable().apply {
+            setColor(0xFF2B2B2B.toInt())
+            cornerRadius = dp(6).toFloat()
+        }
+        background = editBg
+    }
+
+    // Слушатель для автоперехода фокуса на следующее поле, как только введены 2 цифры
+    private fun setupAutoAdvance(current: EditText, next: EditText) {
+        current.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                if (s?.length == 2) {
+                    next.requestFocus()
+                    next.setSelection(next.text.length)
+                }
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+    }
+
+    // Безопасное принудительное скрытие клавиатуры при сохранении
+    private fun hideKeyboard() {
+        val view = this.currentFocus
+        if (view != null) {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(view.windowToken, 0)
+        }
+    }
+
+    // Функция плавной дзен-анимации перехода между экранами
+    private fun crossfade(fromView: View, toView: View) {
+        toView.alpha = 0f
+        toView.visibility = View.VISIBLE
+
+        toView.animate()
+            .alpha(1f)
+            .setDuration(250)
+            .setListener(null)
+
+        fromView.animate()
+            .alpha(0f)
+            .setDuration(250)
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    fromView.visibility = View.GONE
+                }
+            })
     }
 
     private fun playSound() {
@@ -385,9 +612,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onBackPressed() {
-        if (settingsContainer.visibility == View.VISIBLE) {
-            settingsContainer.visibility = View.GONE
-            mainContainer.visibility = View.VISIBLE
+        if (aboutContainer.visibility == View.VISIBLE) {
+            crossfade(aboutContainer, settingsContainer)
+        } else if (settingsContainer.visibility == View.VISIBLE) {
+            crossfade(settingsContainer, mainContainer)
         } else {
             super.onBackPressed()
         }
@@ -411,10 +639,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        try {
+            unregisterReceiver(timerReceiver)
+        } catch (e: Exception) {
+            // Изолированная защита
+        }
     }
 
     override fun onDestroy() {
-        unregisterReceiver(timerReceiver)
         mediaPlayer?.release()
         releaseWakeLock()
         super.onDestroy()
