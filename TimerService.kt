@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.CountDownTimer
 import android.os.IBinder
@@ -31,6 +32,9 @@ class TimerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             "START_TIMER" -> {
+                // Защита от дребезга: если таймер уже работал, сбрасываем его перед новым запуском
+                countDownTimer?.cancel()
+
                 val prepTimeMs = intent.getLongExtra("PREP_TIME_MS", 0L)
                 val mainTimeMs = intent.getLongExtra("MAIN_TIME_MS", 0L)
 
@@ -39,9 +43,17 @@ class TimerService : Service() {
                     originalInterruptionFilter = nm.currentInterruptionFilter
                 }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // ИСПРАВЛЕНО: Безопасный запуск Foreground Service с указанием типа для Android 14+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        NOTIFICATION_ID, 
+                        buildNotification("Медитация", "Идет подготовка..."), 
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForeground(NOTIFICATION_ID, buildNotification("Медитация", "Идет подготовка..."))
                 }
+                
                 startSequentialTimers(prepTimeMs, mainTimeMs)
             }
             "STOP_TIMER" -> {
@@ -52,19 +64,30 @@ class TimerService : Service() {
     }
 
     private fun startSequentialTimers(prepMs: Long, mainMs: Long) {
+        // ИСПРАВЛЕНО: Если времени подготовки нет (0), сразу переходим к медитации
+        if (prepMs <= 0L) {
+            switchToMainTimer(mainMs)
+            return
+        }
+
         countDownTimer = object : CountDownTimer(prepMs, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 sendTimeTickSignal("TICK_PREP", millisUntilFinished / 1000)
             }
             override fun onFinish() {
-                sendBroadcastSignal("PREP_FINISHED")
-                setPrioritySilentMode(true)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    updateNotification("Медитация", "Основная сессия (Режим «Не беспокоить»)...")
-                }
-                startMainTimer(mainMs)
+                switchToMainTimer(mainMs)
             }
         }.start()
+    }
+
+    // Вынесено в отдельный метод для красивого переключения без дублирования кода
+    private fun switchToMainTimer(mainMs: Long) {
+        sendBroadcastSignal("PREP_FINISHED")
+        setPrioritySilentMode(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            updateNotification("Медитация", "Основная сессия (Режим «Не беспокоить»)...")
+        }
+        startMainTimer(mainMs)
     }
 
     private fun startMainTimer(mainMs: Long) {
