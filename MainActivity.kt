@@ -285,7 +285,6 @@ class MainActivity : ComponentActivity() {
         val aboutButton = Button(this).apply {
             text = "О программе"
             setOnClickListener {
-                savePreferences()
                 settingsContainer.visibility = View.GONE
                 aboutContainer.visibility = View.VISIBLE
             }
@@ -408,6 +407,11 @@ class MainActivity : ComponentActivity() {
 
         val prepTimeMs = (prepMin * 60 + prepSec) * 1000
         val mainTimeMs = (mainMin * 60 + mainSec) * 1000
+        
+        if (prepTimeMs + mainTimeMs <= 0) {
+    Toast.makeText(this, "Укажите время больше нуля", Toast.LENGTH_SHORT).show()
+    return
+}
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZazenTimer:WakeLock").apply {
