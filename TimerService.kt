@@ -9,7 +9,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.CountDownTimer
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 
 class TimerService : Service() {
@@ -32,7 +34,6 @@ class TimerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             "START_TIMER" -> {
-                // Защита от дребезга: если таймер уже работал, сбрасываем его перед новым запуском
                 countDownTimer?.cancel()
 
                 val prepTimeMs = intent.getLongExtra("PREP_TIME_MS", 0L)
@@ -43,17 +44,16 @@ class TimerService : Service() {
                     originalInterruptionFilter = nm.currentInterruptionFilter
                 }
 
-                // ИСПРАВЛЕНО: Безопасный запуск Foreground Service с указанием типа для Android 14+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
-                        NOTIFICATION_ID, 
-                        buildNotification("Медитация", "Идет подготовка..."), 
+                        NOTIFICATION_ID,
+                        buildNotification("Медитация", "Идет подготовка..."),
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                     )
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForeground(NOTIFICATION_ID, buildNotification("Медитация", "Идет подготовка..."))
                 }
-                
+
                 startSequentialTimers(prepTimeMs, mainTimeMs)
             }
             "STOP_TIMER" -> {
@@ -64,7 +64,6 @@ class TimerService : Service() {
     }
 
     private fun startSequentialTimers(prepMs: Long, mainMs: Long) {
-        // ИСПРАВЛЕНО: Если времени подготовки нет (0), сразу переходим к медитации
         if (prepMs <= 0L) {
             switchToMainTimer(mainMs)
             return
@@ -72,7 +71,9 @@ class TimerService : Service() {
 
         countDownTimer = object : CountDownTimer(prepMs, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                sendTimeTickSignal("TICK_PREP", millisUntilFinished / 1000)
+                val secondsLeft = (millisUntilFinished + 500) / 1000
+                sendTimeTickSignal("TICK_PREP", secondsLeft)
+                updateNotification("Медитация", "Подготовка: ${formatTime(secondsLeft)}")
             }
             override fun onFinish() {
                 switchToMainTimer(mainMs)
@@ -80,13 +81,9 @@ class TimerService : Service() {
         }.start()
     }
 
-    // Вынесено в отдельный метод для красивого переключения без дублирования кода
     private fun switchToMainTimer(mainMs: Long) {
         sendBroadcastSignal("PREP_FINISHED")
         setPrioritySilentMode(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            updateNotification("Медитация", "Основная сессия (Режим «Не беспокоить»)...")
-        }
         startMainTimer(mainMs)
     }
 
@@ -94,11 +91,25 @@ class TimerService : Service() {
         countDownTimer?.cancel()
         countDownTimer = object : CountDownTimer(mainMs, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                sendTimeTickSignal("TICK_MAIN", millisUntilFinished / 1000)
+                val secondsLeft = (millisUntilFinished + 500) / 1000
+                sendTimeTickSignal("TICK_MAIN", secondsLeft)
+                updateNotification("Медитация", "Осталось: ${formatTime(secondsLeft)}")
             }
             override fun onFinish() {
+                // 1. Сигнализируем в MainActivity о завершении (там сработает playSound())
                 sendBroadcastSignal("MAIN_FINISHED")
-                stopTimerAndService()
+                
+                // 2. Выключаем DND до закрытия сервиса
+                setPrioritySilentMode(false)
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    updateNotification("Медитация", "Сессия завершена")
+                }
+
+                // 3. Удерживаем сервис активным в фоне 7 секунд, чтобы MainActivity успела проиграть гонг
+                Handler(Looper.getMainLooper()).postDelayed({
+                    stopTimerAndService()
+                }, 7000)
             }
         }.start()
     }
@@ -140,7 +151,8 @@ class TimerService : Service() {
     }
 
     override fun onDestroy() {
-        stopTimerAndService()
+        countDownTimer?.cancel()
+        setPrioritySilentMode(false)
         super.onDestroy()
     }
 
@@ -149,18 +161,28 @@ class TimerService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationManager?.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Таймер", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, "Таймер медитации", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
 
     private fun buildNotification(title: String, text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title).setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true).build()
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
     }
 
     private fun updateNotification(title: String, text: String) {
         notificationManager?.notify(NOTIFICATION_ID, buildNotification(title, text))
+    }
+
+    private fun formatTime(seconds: Long): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return String.format("%02d:%02d", m, s)
     }
 }
