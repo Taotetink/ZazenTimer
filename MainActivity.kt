@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -29,6 +30,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
 
@@ -38,16 +40,13 @@ class MainActivity : ComponentActivity() {
     private var localSoundFile: File? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
-    // Контейнеры экранов
     private lateinit var mainContainer: RelativeLayout
     private lateinit var settingsContainer: LinearLayout
     private lateinit var aboutContainer: LinearLayout
 
-    // Элементы главного экрана
     private lateinit var statusTextView: TextView
     private lateinit var timeTextView: TextView
 
-    // Элементы экрана настроек
     private lateinit var prepMinEditText: EditText
     private lateinit var prepSecEditText: EditText
     private lateinit var mainMinEditText: EditText
@@ -56,6 +55,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var volumeSeekBar: SeekBar
     private lateinit var volumeValueTextView: TextView
     private var savedVolumeProgress = 70
+
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (!isGranted) {
+            Toast.makeText(this, "Без уведомлений таймер не сможет работать в фоне", Toast.LENGTH_LONG).show()
+        }
+    }
 
     private val audioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
@@ -100,7 +107,7 @@ class MainActivity : ComponentActivity() {
                     playSound()
                 }
                 "com.example.minimalmeditationtimer.TIMER_STOPPED" -> {
-                    statusTextView.text = "Остановлен"
+                    statusTextView.text = "Готово к запуску"
                     timeTextView.text = "00:00"
                     releaseWakeLock()
                 }
@@ -112,32 +119,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         localSoundFile = File(cacheDir, "meditation_sound.mp3")
 
-        // Главный корневой контейнер
-        val rootLayout = RelativeLayout(this).apply {
-            setBackgroundColor(0xFF1E1E1E.toInt())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
 
-        // Конвертер DP в PX для красивых отступов и размеров на любых экранах
+        val rootLayout = RelativeLayout(this).apply { setBackgroundColor(0xFF1E1E1E.toInt()) }
         val dp = { value: Int -> (value * resources.displayMetrics.density).toInt() }
 
-        // ================= ЭКРАН 1: ГЛАВНЫЙ ТАЙМЕР =================
-        mainContainer = RelativeLayout(this).apply {
-            visibility = View.VISIBLE
-        }
+        // ================= ЭКРАН 1: ГЛАВНЫЙ =================
+        mainContainer = RelativeLayout(this).apply { visibility = View.VISIBLE }
 
-        // 1. Кнопка настроек в верхнем правом углу в виде большого круга "〇"
         val openSettingsButton = Button(this).apply {
             text = "〇"
             textSize = 26f
-            setBackgroundColor(0x00000000) // полностью прозрачный фон
-            setTextColor(0xFF666666.toInt()) // мягкий темно-серый цвет
-            setOnClickListener {
-                crossfade(mainContainer, settingsContainer)
-            }
+            setBackgroundColor(0x00000000)
+            setTextColor(0xFF666666.toInt())
+            setOnClickListener { crossfade(mainContainer, settingsContainer) }
         }
         val settingsBtnParams = RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT,
-            RelativeLayout.LayoutParams.WRAP_CONTENT
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             addRule(RelativeLayout.ALIGN_PARENT_TOP)
             addRule(RelativeLayout.ALIGN_PARENT_RIGHT)
@@ -145,7 +147,6 @@ class MainActivity : ComponentActivity() {
         }
         mainContainer.addView(openSettingsButton, settingsBtnParams)
 
-        // 2. Центральный блок с таймером и кнопками управления
         val centerBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -173,42 +174,36 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        
-        // Красивый стиль для кнопок Старт/Стоп
+
         val buttonBackground = GradientDrawable().apply {
             setColor(0xFF2A2A2A.toInt())
             cornerRadius = dp(8).toFloat()
         }
-        
-        val startButton = Button(this).apply { 
+
+        val startButton = Button(this).apply {
             text = "Старт"
             setTextColor(0xFFFFFFFF.toInt())
             background = buttonBackground.constantState?.newDrawable()
-            setPadding(dp(24), dp(12), dp(24), dp(12)) 
-            setOnClickListener { startTimerService() } 
+            setPadding(dp(24), dp(12), dp(24), dp(12))
+            setOnClickListener { startTimerService() }
         }
-        val stopButton = Button(this).apply { 
+        val stopButton = Button(this).apply {
             text = "Стоп"
             setTextColor(0xFFFFFFFF.toInt())
             background = buttonBackground.constantState?.newDrawable()
-            setPadding(dp(24), dp(12), dp(24), dp(12)) 
-            setOnClickListener { stopTimerService() } 
+            setPadding(dp(24), dp(12), dp(24), dp(12))
+            setOnClickListener { stopTimerService() }
         }
         actionButtonsLayout.addView(startButton)
-        actionButtonsLayout.addView(TextView(this).apply { width = dp(24) }) // отступ между кнопками
+        actionButtonsLayout.addView(TextView(this).apply { width = dp(24) })
         actionButtonsLayout.addView(stopButton)
         centerBlock.addView(actionButtonsLayout)
 
-        // Размещаем центральный блок строго по центру экрана
         val centerParams = RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT,
-            RelativeLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            addRule(RelativeLayout.CENTER_IN_PARENT)
-        }
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT
+        ).apply { addRule(RelativeLayout.CENTER_IN_PARENT) }
         mainContainer.addView(centerBlock, centerParams)
         rootLayout.addView(mainContainer, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT))
-
 
         // ================= ЭКРАН 2: НАСТРОЙКИ =================
         settingsContainer = LinearLayout(this).apply {
@@ -236,16 +231,14 @@ class MainActivity : ComponentActivity() {
         mainLayout.addView(mainSecEditText)
         settingsContainer.addView(mainLayout)
 
-        // Настройка автоперехода фокуса между полями ввода
         setupAutoAdvance(prepMinEditText, prepSecEditText)
         setupAutoAdvance(prepSecEditText, mainMinEditText)
         setupAutoAdvance(mainMinEditText, mainSecEditText)
 
         settingsContainer.addView(TextView(this).apply { text = "Громкость гонга:"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(8), 0, dp(4)) })
         val volumeLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        
-        // Кастомизация SeekBar под общий дзен-стиль
-        volumeSeekBar = SeekBar(this).apply { 
+
+        volumeSeekBar = SeekBar(this).apply {
             max = 100
             progressDrawable?.setColorFilter(0xFF666666.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
             thumb?.setColorFilter(0xFFFFFFFF.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
@@ -264,25 +257,23 @@ class MainActivity : ComponentActivity() {
         settingsContainer.addView(volumeLayout)
 
         soundNameTextView = TextView(this).apply { text = "Звук по умолчанию"; setTextColor(0xFF888888.toInt()); setPadding(0, dp(4), 0, dp(8)); gravity = Gravity.CENTER }
-        
-        val pickSoundButton = Button(this).apply { 
+
+        val pickSoundButton = Button(this).apply {
             text = "Выбрать аудиофайл"
             setTextColor(0xFFFFFFFF.toInt())
             background = buttonBackground.constantState?.newDrawable()
             setPadding(dp(16), dp(8), dp(16), dp(8))
-            setOnClickListener { audioPickerLauncher.launch("audio/*") } 
+            setOnClickListener { audioPickerLauncher.launch("audio/*") }
         }
         settingsContainer.addView(pickSoundButton)
         settingsContainer.addView(soundNameTextView)
 
-        // Горизонтальный ряд для кнопок «О программе» и «Сохранить» (НАД разрешениями)
         val buttonsRowLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, dp(8))
         }
 
-        // Кнопка «О программе» (Прозрачная с тонкой рамкой в стиле Outlined Button)
         val outlinedBackground = GradientDrawable().apply {
             setColor(0x00000000)
             setStroke(dp(1), 0xFF555555.toInt())
@@ -300,7 +291,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Кнопка «Сохранить»
         val closeSettingsButton = Button(this).apply {
             text = "Сохранить"
             setTextColor(0xFFFFFFFF.toInt())
@@ -314,11 +304,10 @@ class MainActivity : ComponentActivity() {
         }
 
         buttonsRowLayout.addView(aboutButton)
-        buttonsRowLayout.addView(TextView(this).apply { width = dp(16) }) // Отступ между кнопками
+        buttonsRowLayout.addView(TextView(this).apply { width = dp(16) })
         buttonsRowLayout.addView(closeSettingsButton)
         settingsContainer.addView(buttonsRowLayout)
 
-        // Кнопка режима «Не беспокоить» (Текстовая ссылка)
         val dndButton = Button(this).apply {
             text = "Разрешить режим «Не беспокоить»"
             setTextColor(0xFF888888.toInt())
@@ -327,7 +316,6 @@ class MainActivity : ComponentActivity() {
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    // ИСПРАВЛЕНО: Теперь используется корректный метод Android API
                     if (!nm.isNotificationPolicyAccessGranted) {
                         startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
                     } else {
@@ -338,7 +326,6 @@ class MainActivity : ComponentActivity() {
         }
         settingsContainer.addView(dndButton)
 
-        // Кнопка «Разрешить работу в фоне» (Текстовая ссылка под DND)
         val backgroundButton = Button(this).apply {
             text = "Разрешить работу в фоне"
             setTextColor(0xFF888888.toInt())
@@ -360,84 +347,43 @@ class MainActivity : ComponentActivity() {
                             startActivity(intent)
                         }
                     }
-                } else {
-                    Toast.makeText(this@MainActivity, "Разрешение уже предоставлено!", Toast.LENGTH_SHORT).show()
                 }
             }
         }
         settingsContainer.addView(backgroundButton)
+        rootLayout.addView(settingsContainer, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT))
 
-        val settingsParams = RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.MATCH_PARENT,
-            RelativeLayout.LayoutParams.MATCH_PARENT
-        )
-        rootLayout.addView(settingsContainer, settingsParams)
-
-
-        // ================= ЭКРАН 3: О ПРОГРАММЕ (ПОЛНОЕ ПЕРЕКРЫТИЕ) =================
+        // ================= ЭКРАН 3: О ПРОГРАММЕ =================
         aboutContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setBackgroundColor(0xFF1E1E1E.toInt()) // Полное аскетичное перекрытие настроек
+            setBackgroundColor(0xFF1E1E1E.toInt())
             setPadding(dp(32), dp(32), dp(32), dp(32))
         }
 
-        // Заголовок программы
-        val aboutTitle = TextView(this).apply {
-            text = "Zazen Timer v1.0"
-            textSize = 26f
-            setTextColor(0xFFFFFFFF.toInt())
-            setPadding(0, 0, 0, dp(20))
-            gravity = Gravity.CENTER
-        }
-        aboutContainer.addView(aboutTitle)
+        aboutContainer.addView(TextView(this).apply { text = "Zazen Timer v1.0"; textSize = 26f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, 0, 0, dp(20)); gravity = Gravity.CENTER })
+        aboutContainer.addView(TextView(this).apply { text = "Минималистичный таймер для практики медитации.\n\nТаймер переводит телефон в режим «Не беспокоить», отсчитывает время и подает сигналы начала и окончания медитации."; textSize = 15f; setTextColor(0xFFCCCCCC.toInt()); setPadding(0, 0, 0, dp(20)); gravity = Gravity.CENTER })
 
-        // Описание программы
-        val aboutText = TextView(this).apply {
-            text = "Минималистичный таймер для практики медитации.\n\nТаймер делает только то, что должен: переводит телефон в режим «Не беспокоить», отсчитывает время и подает сигналы начала и окончания медитации."
-            textSize = 15f
-            setTextColor(0xFFCCCCCC.toInt())
-            setPadding(0, 0, 0, dp(20))
-            gravity = Gravity.CENTER
-        }
-        aboutContainer.addView(aboutText)
-
-        // Автор и кликабельный сайт
-        val aboutAuthor = TextView(this).apply {
-            text = "Автор: Игорь Василевский\nigorvasilevsky.com"
-            textSize = 15f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(24))
-        }
+        val aboutAuthor = TextView(this).apply { text = "Автор: Игорь Василевский\nigorvasilevsky.com"; textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(24)) }
         android.text.util.Linkify.addLinks(aboutAuthor, android.text.util.Linkify.WEB_URLS)
         aboutAuthor.movementMethod = android.text.method.LinkMovementMethod.getInstance()
         aboutContainer.addView(aboutAuthor)
 
-        // Кнопка возврата назад в настройки
         val aboutBackButton = Button(this).apply {
             text = "Назад"
             setTextColor(0xFFFFFFFF.toInt())
             background = buttonBackground.constantState?.newDrawable()
             setPadding(dp(24), dp(8), dp(24), dp(8))
-            setOnClickListener {
-                crossfade(aboutContainer, settingsContainer)
-            }
+            setOnClickListener { crossfade(aboutContainer, settingsContainer) }
         }
         aboutContainer.addView(aboutBackButton)
-
-        val aboutParams = RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.MATCH_PARENT,
-            RelativeLayout.LayoutParams.MATCH_PARENT
-        )
-        rootLayout.addView(aboutContainer, aboutParams)
+        rootLayout.addView(aboutContainer, RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT))
 
         setContentView(rootLayout)
         loadPreferences()
     }
 
-    // Создание красивых полей ввода со скругленными углами
     private fun createTimeEditText(hintText: String, dp: (Int) -> Int) = EditText(this).apply {
         hint = hintText
         setHintTextColor(0xFF555555.toInt())
@@ -447,16 +393,12 @@ class MainActivity : ComponentActivity() {
         gravity = Gravity.CENTER
         width = dp(64)
         setPadding(dp(8), dp(10), dp(8), dp(10))
-        
-        // Убираем старую линию снизу, делаем аккуратный темный блок
-        val editBg = GradientDrawable().apply {
+        background = GradientDrawable().apply {
             setColor(0xFF2B2B2B.toInt())
             cornerRadius = dp(6).toFloat()
         }
-        background = editBg
     }
 
-    // Слушатель для автоперехода фокуса на следующее поле, как только введены 2 цифры
     private fun setupAutoAdvance(current: EditText, next: EditText) {
         current.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
@@ -470,7 +412,6 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    // Безопасное принудительное скрытие клавиатуры при сохранении
     private fun hideKeyboard() {
         val view = this.currentFocus
         if (view != null) {
@@ -479,24 +420,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Функция плавной дзен-анимации перехода между экранами
     private fun crossfade(fromView: View, toView: View) {
         toView.alpha = 0f
         toView.visibility = View.VISIBLE
-
-        toView.animate()
-            .alpha(1f)
-            .setDuration(250)
-            .setListener(null)
-
-        fromView.animate()
-            .alpha(0f)
-            .setDuration(250)
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    fromView.visibility = View.GONE
-                }
-            })
+        toView.animate().alpha(1f).setDuration(250).setListener(null)
+        fromView.animate().alpha(0f).setDuration(250).setListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) { fromView.visibility = View.GONE }
+        })
     }
 
     private fun playSound() {
@@ -639,14 +569,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        try {
-            unregisterReceiver(timerReceiver)
-        } catch (e: Exception) {
-            // Изолированная защита
-        }
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(timerReceiver) } catch (e: Exception) {}
         mediaPlayer?.release()
         releaseWakeLock()
         super.onDestroy()
